@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+
+    name: PHP ${{ matrix.php }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Validate composer.json
+        run: composer validate
+
+      - name: Lint generator script
+        run: php -l bin/byjesper-guidelines
+
+      - name: Smoke test sync + build
+        run: |
+          work="$GITHUB_WORKSPACE"
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          php "$work/bin/byjesper-guidelines" sync --profile=packages
+          php "$work/bin/byjesper-guidelines" sync --profile=apps
+          php "$work/bin/byjesper-guidelines" build
+          test -f CLAUDE.md && test -f AGENTS.md && echo "smoke ok"
