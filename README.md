@@ -1,58 +1,82 @@
 # Laravel Coding Guidelines
 
-Shared AI coding guidelines for `byjesper` Laravel packages and apps, plus a
-zero-dependency generator that compiles them into `CLAUDE.md` and `AGENTS.md`.
+Single source of truth for `byjesper`'s shared AI coding guidelines, plus a
+zero-dependency tool that **publishes** them into a consuming repo's
+`.ai/guidelines/` and (for non-Boost repos) **composes** `CLAUDE.md` / `AGENTS.md`.
 
-`CLAUDE.md` and `AGENTS.md` are **generated artifacts** — never edit them by
-hand. Edit the fragments instead and rebuild.
+The shared fragments live here once. Each project pulls them in with one composer
+command — no copy/paste, and a `composer update` refreshes them everywhere.
 
 ## How it works
 
-Fragments are concatenated in order:
+Two commands (`vendor/bin/byjesper-guidelines`, wrapped as composer scripts):
 
-1. `guidelines/common/*.md` — shared by every profile
-2. `guidelines/<profile>/*.md` — `packages` or `apps`
-3. `./.ai/guidelines/*.md` — local to the consuming repo
+- **`sync --profile=apps|packages`** — copies this package's `common` +
+  `<profile>` fragments into the consumer's **`.ai/guidelines/shared/`** (a
+  *managed* directory — wiped and rewritten each run). Your own project-specific
+  fragments live elsewhere under `.ai/guidelines/` and are **never touched**.
+- **`build`** — composes every `.ai/guidelines/**/*.md` (shared + local), sorted
+  by filename, into `CLAUDE.md` and `AGENTS.md`. For repos that do **not** use
+  Laravel Boost.
 
-Files sort by name within each group, so number them (`10-`, `20-`, …).
+Composition after `sync` depends on the repo:
 
-## Use it in a package or app
+| Repo type | After `sync` | Why |
+| --------- | ------------ | --- |
+| **App** (uses Boost) | `php artisan boost:update` | Boost reads `.ai/guidelines/**` and composes |
+| **Library** (no Boost) | `composer guidelines:build` | small built-in composer; keeps Boost out of libraries |
 
-Once this repo is public and registered on [Packagist](https://packagist.org),
-consumers need nothing but the dev requirement — no `repositories` block:
+`CLAUDE.md` / `AGENTS.md` and `.ai/guidelines/shared/` are **generated** — never
+edit them. Edit the fragments here (shared) or your local `.ai/guidelines/*.md`,
+then re-sync / re-build.
+
+## Use it in a library (no Boost)
 
 ```jsonc
-// composer.json
-"require-dev": {
-    "byjesper/laravel-coding-guidelines": "^1.0"
-},
+// composer.json — once this repo is public on Packagist
+"require-dev": { "byjesper/laravel-coding-guidelines": "^0.1" },
 "scripts": {
-    "guidelines:build": "byjesper-guidelines --profile=packages",
-    "guidelines:check": "byjesper-guidelines --profile=packages --check"
+    "post-update-cmd": ["@guidelines:sync", "@guidelines:build"],
+    "guidelines:sync": "byjesper-guidelines sync --profile=packages",
+    "guidelines:build": "byjesper-guidelines build",
+    "guidelines:check": "byjesper-guidelines build --check"
 }
 ```
 
-> If the repo is kept private/unpublished instead, each consumer must add a
-> `"repositories": [{ "type": "vcs", "url": "…" }]` entry pointing at it.
-> Publishing publicly to Packagist avoids that per-consumer wiring.
+Wire `@guidelines:check` into your `test` script so CI fails on hand-edited
+`CLAUDE.md`/`AGENTS.md`. `post-update-cmd` auto-refreshes on every
+`composer update`.
 
-Apps use `--profile=apps` instead. Wire `@guidelines:check` into the `test`
-script so CI fails if `CLAUDE.md`/`AGENTS.md` drift from source.
+## Use it in an app (Boost)
 
-```bash
-composer guidelines:build   # regenerate CLAUDE.md + AGENTS.md
-composer guidelines:check   # verify they are up to date (CI)
+```jsonc
+"require-dev": { "byjesper/laravel-coding-guidelines": "^0.1" },
+"scripts": {
+    "post-update-cmd": ["@guidelines:sync"],
+    "guidelines:sync": "byjesper-guidelines sync --profile=apps"
+}
 ```
+
+Then `php artisan boost:update` composes `.ai/guidelines/**` (shared + local)
+into `CLAUDE.md`/`AGENTS.md`.
+
+## Where project-specific guidance goes
+
+Anything unique to a project — most importantly its **git release-model**
+declaration — is a local fragment in `.ai/guidelines/` (e.g.
+`55-git-release-model.md`). `sync` only manages `.ai/guidelines/shared/`, so your
+local fragments are safe and compose alongside the shared ones (ordered by
+filename number).
 
 ## Profiles
 
-| Profile    | Gets            | For                          |
-| ---------- | --------------- | ---------------------------- |
-| `packages` | common + packages | composer libraries         |
-| `apps`     | common + apps     | Laravel applications       |
+| Profile    | Gets              | For                  |
+| ---------- | ----------------- | -------------------- |
+| `packages` | common + packages | composer libraries   |
+| `apps`     | common + apps     | Laravel applications |
 
-Add a profile by creating a new directory under `guidelines/`; the generator
-discovers it automatically.
+Add a profile by creating a new directory under `guidelines/`; `sync` discovers
+it automatically.
 
 ## License
 
