@@ -1,0 +1,17 @@
+{
+    "name": "byjesper/laravel-coding-guidelines",
+    "description": "Shared AI coding guidelines for byjesper Laravel packages and apps, with a generator that builds CLAUDE.md and AGENTS.md from a single source.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2"
+    },
+    "bin": [
+        "bin/byjesper-guidelines"
+    ],
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

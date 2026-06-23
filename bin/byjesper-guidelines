@@ -1,0 +1,109 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * byjesper-guidelines — generate CLAUDE.md and AGENTS.md from a single source.
+ *
+ * Usage (from the root of a consuming package or app):
+ *   byjesper-guidelines --profile=packages          build (default profile: packages)
+ *   byjesper-guidelines --profile=apps --check      verify only; non-zero exit if stale
+ *
+ * Fragments are concatenated in this order:
+ *   1. guidelines/common/*.md      (shared, both profiles)
+ *   2. guidelines/<profile>/*.md   (profile-specific)
+ *   3. ./.ai/guidelines/*.md       (local to the consuming repo)
+ *
+ * Edit those fragments — never CLAUDE.md or AGENTS.md directly.
+ */
+
+$args = array_slice($argv, 1);
+$check = in_array('--check', $args, true);
+
+$profile = 'packages';
+foreach ($args as $arg) {
+    if (str_starts_with($arg, '--profile=')) {
+        $profile = substr($arg, strlen('--profile='));
+    }
+}
+
+$shared = __DIR__.'/../guidelines';
+
+$profiles = array_map(
+    'basename',
+    array_filter(
+        glob($shared.'/*', GLOB_ONLYDIR) ?: [],
+        static fn (string $dir): bool => basename($dir) !== 'common',
+    ),
+);
+
+if (! in_array($profile, $profiles, true)) {
+    fwrite(STDERR, "Unknown profile '{$profile}'. Available: ".implode(', ', $profiles)."\n");
+    exit(1);
+}
+
+$root = getcwd();
+
+$collect = static function (string $dir): array {
+    if (! is_dir($dir)) {
+        return [];
+    }
+
+    $files = glob($dir.'/*.md') ?: [];
+    sort($files);
+
+    return $files;
+};
+
+$files = [
+    ...$collect($shared.'/common'),
+    ...$collect($shared.'/'.$profile),
+    ...$collect($root.'/.ai/guidelines'),
+];
+
+if ($files === []) {
+    fwrite(STDERR, "No guideline fragments found.\n");
+    exit(1);
+}
+
+$banner = <<<TXT
+<!--
+  GENERATED FILE — DO NOT EDIT.
+  Source: byjesper/laravel-coding-guidelines (common + {$profile}) plus ./.ai/guidelines/*.md
+  Rebuild: composer guidelines:build
+-->
+TXT;
+
+$body = $banner."\n\n".implode("\n\n", array_map(
+    static fn (string $file): string => rtrim((string) file_get_contents($file)),
+    $files,
+))."\n";
+
+$targets = ['CLAUDE.md', 'AGENTS.md'];
+$stale = [];
+
+foreach ($targets as $target) {
+    $path = $root.'/'.$target;
+    $current = is_file($path) ? file_get_contents($path) : null;
+
+    if ($current !== $body) {
+        $stale[] = $target;
+
+        if (! $check) {
+            file_put_contents($path, $body);
+        }
+    }
+}
+
+if ($check) {
+    if ($stale !== []) {
+        fwrite(STDERR, 'Out of date: '.implode(', ', $stale).". Run `composer guidelines:build`.\n");
+        exit(1);
+    }
+
+    echo "Guidelines up to date (profile: {$profile}).\n";
+    exit(0);
+}
+
+echo 'Wrote '.implode(', ', $targets)." (profile: {$profile}, ".count($files)." fragments).\n";
